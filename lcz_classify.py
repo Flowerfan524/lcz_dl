@@ -7,16 +7,38 @@ from resnet import resnet18, resnet50
 import numpy as np
 import pdb
 import collections
+import img_process as T
+
+MIN_PIXEL = [0, 0, 0]
+MAX_PIXEL = [1044, 1047, 1366]
+
 
 def get_data(img_file, label_file):
     imgs = np.load(img_file)['arr_0'].astype('float32')
     labels = np.load(label_file)['arr_0'].astype('int') - 1
     return imgs, labels
 
-def get_dataloader(imgs,labels,batch_size=64):
-    transformer = transforms.Compose(
-            [transforms.ToTensor(),
-             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+
+def get_dataloader(imgs,labels,height=32,width=32,
+                   batch_size=64,training=False):
+    normalizer = T.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225])
+    if training:
+        transformer = T.Compose([
+            T.ArrayToImage(MIN_PIXEL, MAX_PIXEL),
+            T.RandomSizedRectCrop(height, width),
+            T.RandomHorizontalFlip(),
+            T.RandomVerticalFlip(),
+            T.ToTensor(),
+            normalizer,
+        ])
+    else:
+        transformer = T.Compose([
+            T.ArrayToImage(MIN_PIXEL, MAX_PIXEL),
+            T.RectScale(height, width),
+            T.ToTensor(),
+            normalizer,
+        ])
     data_set = LCZD(imgs, labels, transform=transformer)
     data_loader = DataLoader(data_set, batch_size=batch_size, shuffle=True)
     return data_loader
@@ -50,8 +72,6 @@ def main():
     wh_label = 'wh_label.npz'
     xa_file = 'xa_img.npz'
     xa_label = 'xa_label.npz'
-    height, width = 32, 32
-    batch_size = 256
     num_epochs = 30
     hk_imgs,hk_labels = get_data(img_file,label_file)
     wh_imgs,wh_labels = get_data(wh_file,wh_label)
@@ -62,19 +82,19 @@ def main():
     print('hk',collections.Counter(hk_labels))
     print('wh',collections.Counter(wh_labels))
     print(collections.Counter(xa_labels))
-    #pdb.set_trace() 
+    #pdb.set_trace()
     train_imgs = np.concatenate((data1[0],data2[0],data3[0]))
     train_labels = np.concatenate((data1[1],data2[1],data3[1]))
     test_imgs = np.concatenate((data1[2],data2[2]))
     test_labels = np.concatenate((data1[3],data2[3]))
-    train_loader = get_dataloader(train_imgs,train_labels)
+    train_loader = get_dataloader(train_imgs,train_labels,training=True)
     #print(len(data2[0]),len(data2[1]))
     train_loader = get_dataloader(train_imgs,train_labels)
     test_loader = get_dataloader(test_imgs,test_labels)
     test_loader1 = get_dataloader(data1[2],data1[3])
     test_loader2 = get_dataloader(data2[2],data2[3])
     test_loader3 = get_dataloader(data3[2],data3[3])
-    
+
     #test_loader = get_data(wh_file, wh_label, height, width, batch_size)
     model_ft =  resnet50(pretrained=True,num_classes=17)
     model_ft.cuda()
@@ -100,7 +120,7 @@ def main():
                 evaluate(model_ft, data_loader=test_loader1)
                 evaluate(model_ft, data_loader=test_loader2)
                 evaluate(model_ft, data_loader=test_loader3)
-    #evaluate(model_ft, data_loader=data_loader)
+    # evaluate(model_ft, data_loader=data_loader)
     evaluate(model_ft, data_loader=test_loader)
     evaluate(model_ft, data_loader=test_loader1)
     evaluate(model_ft, data_loader=test_loader2)
